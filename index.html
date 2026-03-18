@@ -2,57 +2,64 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Piano Tiles Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Piano Tiles</title>
 
 <style>
+
 body{
-  margin:0;
-  text-align:center;
-  font-family:sans-serif;
-  background:#121212;
-  color:white;
+margin:0;
+font-family:sans-serif;
+text-align:center;
+background:#111;
+color:white;
 }
 
 h1{
-  margin-top:10px;
+margin:10px;
 }
 
-#score{
-  font-size:24px;
-  margin:10px;
+#score,#highscore{
+font-size:20px;
+margin:5px;
 }
 
 #game{
-  width:320px;
-  height:520px;
-  margin:auto;
-  background:white;
-  position:relative;
-  overflow:hidden;
-  border:4px solid black;
+width:320px;
+height:520px;
+margin:auto;
+background:white;
+position:relative;
+overflow:hidden;
+border:4px solid black;
+touch-action:manipulation;
 }
 
 .tile{
-  width:80px;
-  height:130px;
-  position:absolute;
-  background:black;
+width:80px;
+height:140px;
+background:black;
+position:absolute;
+border-radius:6px;
 }
 
 #startBtn{
-  margin:10px;
-  padding:10px 20px;
-  font-size:18px;
-  cursor:pointer;
+padding:10px 20px;
+font-size:18px;
+margin:10px;
 }
+
 </style>
 </head>
 
 <body>
 
 <h1>Piano Tiles</h1>
+
 <div id="score">Score: 0</div>
-<button id="startBtn">Start</button>
+<div id="highscore">HighScore: 0</div>
+
+<button id="startBtn">START</button>
 
 <div id="game"></div>
 
@@ -62,98 +69,212 @@ h1{
 
 const game = document.getElementById("game")
 const scoreText = document.getElementById("score")
+const highscoreText = document.getElementById("highscore")
 const startBtn = document.getElementById("startBtn")
 const music = document.getElementById("music")
 
-let tiles = []
-let score = 0
-let speed = 2
-let running = false
+let tiles=[]
+let score=0
+let running=false
+let speed=2
+
+let highscore=localStorage.getItem("pianoHighScore") || 0
+highscoreText.innerText="HighScore: "+highscore
+
+/* リズムデータ（秒） */
+const beatMap=[
+1,1.5,2,2.5,3,3.5,4,
+4.5,5,5.5,6,6.5,7,
+7.5,8,8.5,9,9.5,10
+]
+
+let beatIndex=0
+
+/* ピアノ音 */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+
+function playPiano(){
+
+const osc = audioCtx.createOscillator()
+const gain = audioCtx.createGain()
+
+osc.type="sine"
+osc.frequency.value=523
+
+osc.connect(gain)
+gain.connect(audioCtx.destination)
+
+gain.gain.setValueAtTime(0.5,audioCtx.currentTime)
+gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.5)
+
+osc.start()
+osc.stop(audioCtx.currentTime+0.5)
+
+}
+
+/* タイル生成 */
 
 function createTile(){
 
-  const tile = document.createElement("div")
-  tile.classList.add("tile")
+const tile=document.createElement("div")
+tile.className="tile"
 
-  const column = Math.floor(Math.random()*4)
+const column=Math.floor(Math.random()*4)
 
-  tile.style.left = column*80+"px"
-  tile.style.top = "-130px"
+tile.style.left=(column*80)+"px"
+tile.style.top="-140px"
 
-  tile.onclick = function(e){
+tile.dataset.hit="false"
 
-    if(!running) return
+game.appendChild(tile)
 
-    score++
-    scoreText.innerText = "Score: " + score
-
-    tile.remove()
-    tiles = tiles.filter(t=>t!==tile)
-
-    e.stopPropagation()
-
-  }
-
-  game.appendChild(tile)
-  tiles.push(tile)
-}
-
-function gameOver(){
-
-  running=false
-  music.pause()
-
-  alert("ゲームオーバー\nScore: "+score)
-
-  tiles.forEach(t=>t.remove())
-  tiles=[]
+tiles.push(tile)
 
 }
+
+/* タイル移動 */
 
 function update(){
 
-  if(!running) return
+if(!running) return
 
-  tiles.forEach(tile=>{
+tiles.forEach(tile=>{
 
-    let top = parseInt(tile.style.top)
+let top=parseFloat(tile.style.top)
 
-    top += speed
+top+=speed
 
-    tile.style.top = top+"px"
+tile.style.top=top+"px"
 
-    if(top>520){
-      gameOver()
-    }
+if(top>520 && tile.dataset.hit==="false"){
+gameOver()
+}
 
-  })
+})
 
-  requestAnimationFrame(update)
+requestAnimationFrame(update)
 
 }
 
-game.onclick=function(){
-  if(running) gameOver()
+/* リズム同期 */
+
+function syncBeats(){
+
+if(!running) return
+
+let time=music.currentTime
+
+if(beatIndex<beatMap.length && time>=beatMap[beatIndex]){
+
+createTile()
+beatIndex++
+
 }
+
+requestAnimationFrame(syncBeats)
+
+}
+
+/* タイルタッチ */
+
+function hitTile(tile){
+
+if(!running) return
+
+tile.dataset.hit="true"
+
+playPiano()
+
+score++
+scoreText.innerText="Score: "+score
+
+tile.remove()
+
+tiles=tiles.filter(t=>t!==tile)
+
+}
+
+/* タッチ & クリック */
+
+game.addEventListener("touchstart",handleTouch)
+game.addEventListener("mousedown",handleTouch)
+
+function handleTouch(e){
+
+if(!running) return
+
+let rect=game.getBoundingClientRect()
+
+let x=(e.touches?e.touches[0].clientX:e.clientX)-rect.left
+let y=(e.touches?e.touches[0].clientY:e.clientY)-rect.top
+
+let hit=false
+
+tiles.forEach(tile=>{
+
+let tRect=tile.getBoundingClientRect()
+
+let tx=tRect.left-rect.left
+let ty=tRect.top-rect.top
+
+if(x>tx && x<tx+80 && y>ty && y<ty+140){
+
+hit=true
+hitTile(tile)
+
+}
+
+})
+
+if(!hit){
+gameOver()
+}
+
+}
+
+/* ゲームオーバー */
+
+function gameOver(){
+
+running=false
+music.pause()
+
+if(score>highscore){
+
+highscore=score
+localStorage.setItem("pianoHighScore",highscore)
+
+}
+
+highscoreText.innerText="HighScore: "+highscore
+
+alert("Game Over\nScore: "+score)
+
+tiles.forEach(t=>t.remove())
+tiles=[]
+
+}
+
+/* ゲーム開始 */
 
 function startGame(){
 
-  tiles.forEach(t=>t.remove())
-  tiles=[]
+tiles.forEach(t=>t.remove())
+tiles=[]
 
-  score=0
-  scoreText.innerText="Score: 0"
+score=0
+beatIndex=0
 
-  running=true
+scoreText.innerText="Score: 0"
 
-  music.currentTime=0
-  music.play()
+running=true
 
-  setInterval(()=>{
-    if(running) createTile()
-  },600)
+music.currentTime=0
+music.play()
 
-  update()
+update()
+syncBeats()
+
 }
 
 startBtn.onclick=startGame
